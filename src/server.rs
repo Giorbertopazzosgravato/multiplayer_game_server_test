@@ -1,84 +1,68 @@
-use std::net::TcpListener;
+use std::collections::HashMap;
+use std::net::{IpAddr, SocketAddr, UdpSocket};
+use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use crate::player::Player;
 use crate::thread_pool::ThreadPool;
 use crate::position::Position;
 
+const BUFFER_SIZE: usize = 8;
+
 pub struct Server {
-    players: Arc<Mutex<Vec<Arc<Mutex<Player>>>>>,
-    listener: Arc<Mutex<TcpListener>>,
-    thread_pool: ThreadPool,
+    players: Arc<Mutex<HashMap<SocketAddr, Arc<Mutex<Player>>>>>,
+    listener: Arc<Mutex<UdpSocket>>,
+    //thread_pool: ThreadPool,
     positions: Arc<Mutex<Box<Vec<Position>>>>,
 }
 impl Server {
     pub fn new(port: &str) -> Self {
-        let listener = TcpListener::bind(port).unwrap();
+        let listener = UdpSocket::bind(port).unwrap();
         Self{
-            players: Arc::new(Mutex::new(vec![])),
+            players: Arc::new(Mutex::new(HashMap::new())),
             listener: Arc::new(Mutex::new(listener)),
-            thread_pool: ThreadPool::new(10),
+            // thread_pool: ThreadPool::new(10),
             positions: Arc::new(Mutex::new(Box::new(vec![])))
         }
     }
-    pub fn accept_connections(&mut self) {
-        let player_clone = Arc::clone(&self.players);
-        let listener_clone = Arc::clone(&self.listener);
-        println!("help");
-        thread::spawn(move ||{
-            println!("accepting shit");
-            let mut player_id: u16 = 0;
-            while let Ok((stream, socket_addr)) = listener_clone.lock().unwrap().accept(){
-                println!("accepted connection: {:?}", socket_addr.ip());
-                player_clone.lock().unwrap().push(Arc::new(Mutex::new(Player::new(stream, socket_addr, player_id))));
-                player_id += 1;
+    pub fn handle_connections(&mut self) {
+        let socket = Arc::clone(&self.listener);
+        let players = Arc::clone(&self.players);
+        let handle = thread::spawn(move ||{
+            loop {
+                let mut buf: [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
+                let mut src: SocketAddr = SocketAddr::new(IpAddr::from_str("192.168.0.0").unwrap(), 7878);
+                {
+                    let socket = socket.lock().unwrap();
+                    (_, src) = socket.recv_from(&mut buf).unwrap();
+                }
+                {
+                    let mut players = players.lock().unwrap();
+                    match players.get(&src) {
+                        None => {
+                            println!("added player {src}");
+                            players.insert(src, Arc::new(Mutex::new(Player::new(src))));
+                        }
+                        Some(player) => {
+                            let mut player = player.lock().unwrap();
+                            player.update_position(&buf);
+                            println!("updated player position {src}; {}", player);
+                        }
+                    };
+                }
             }
         });
+        handle.join().unwrap();
     }
-    pub fn handle_connections(&mut self) {
-        loop {
-            let clone = Arc::clone(&self.players);
-            let mut new_positions = Box::new(vec![]);
-            {
-                let mut clone = clone.lock().unwrap();
-                let mut indices_to_remove = vec![];
-                let mut index = 0;
-                for player in clone.iter_mut() {
-                    {
-                        let mut player = player.lock().unwrap();
-                        match player.get_input() {
-                            Ok(_) => {
-                                println!("player position: {:?}", player.position);
-                                new_positions.push(Position::new(player.player_id, player.position));
-                            }
-                            Err(_) => { indices_to_remove.push(index) }
-                        };
-                    }
-                    index += 1;
-                }
-                if indices_to_remove.len() > 0 {
-                    for indices in indices_to_remove.iter().rev() {
-                        println!("closed connection {}", clone.iter().nth(*indices as usize).unwrap().lock().unwrap());
-                        clone.remove(*indices as usize);
-                    }
-                }
-            }
-            self.positions = Arc::new(Mutex::new(new_positions));
-            Self::send_update_position(self);
-        }
-    }
-    fn send_update_position(&mut self){
-        let players = Arc::clone(&self.players);
-        let mut players = players.lock().unwrap();
-        for player in players.iter_mut() {
-            let clone = Arc::clone(&self.positions);
-            let player_clone = Arc::clone(&player);
-            self.thread_pool.execute( move || {
-                println!("sending updated position");
-                let mut player = player_clone.lock().unwrap();
-                let positions = clone.lock().unwrap();
-                player.send_position(positions.as_slice());
-            });
+    fn send_updated_positions(&mut self){
+        let threadPool = ThreadPool::new(10);
+        let hashmap = self.players.lock().unwrap();
+        let sources = hashmap.keys();
+        for source in sources {
+            threadPool.execute(||{
+
+            })
+
         }
     }
 }

@@ -1,5 +1,7 @@
+use std::net::SocketAddr;
+
 pub struct Position{
-    pub player_id: u16,
+    pub player_socket: SocketAddr,
     pub position: [f32; 2],
 }
 impl Position{
