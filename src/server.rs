@@ -59,10 +59,7 @@ impl Server {
         let hashmap = self.players.lock().unwrap();
         let sources = hashmap.keys();
         for source in sources {
-            threadPool.execute(||{
-
-            })
-
+            threadPool.execute(||{})
         }
     }
 }
