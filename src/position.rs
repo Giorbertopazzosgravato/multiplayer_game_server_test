@@ -1,14 +1,14 @@
-use std::net::SocketAddr;
+use std::net::{SocketAddr, SocketAddrV4};
 
 pub struct Position{
     pub player_socket: SocketAddr,
     pub position: [f32; 2],
 }
 impl Position{
-    pub fn new(player_id: u16, position: [f32; 2]) -> Self {
+    pub fn new(position: [f32; 2], player_socket: SocketAddr) -> Self {
         Self{
-            player_id,
             position,
+            player_socket,
         }
     }
 }

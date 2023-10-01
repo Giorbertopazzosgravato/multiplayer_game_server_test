@@ -7,6 +7,7 @@ mod position;
 
 fn main() {
 
-    let mut server = Server::new("0.0.0.0:7878");
+    let mut server = Server::new();
     server.handle_connections();
+    server.send_updated_positions();
 }
